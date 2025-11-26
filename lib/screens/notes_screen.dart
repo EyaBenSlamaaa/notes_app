@@ -1,9 +1,12 @@
-// lib/screens/notes_screen.dart (updated)
+// lib/screens/notes_screen.dart (CORRECTED)
+// ============================================
 import 'package:flutter/material.dart';
-import 'package:appwrite/models.dart';
+import 'package:appwrite/models.dart' as models;
 import '../services/note_service.dart';
 import '../widgets/note_item.dart';
 import '../widgets/add_note_modal.dart';
+import '../providers/auth_provider.dart';
+import 'package:provider/provider.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({Key? key}) : super(key: key);
@@ -13,10 +16,9 @@ class NotesScreen extends StatefulWidget {
 }
 
 class _NotesScreenState extends State<NotesScreen> {
+  List<models.Document> notes = [];
+  bool isLoading = true;
   final NoteService _noteService = NoteService();
-  List<Document> _notes = [];
-  bool _isLoading = true;
-  String? _error;
 
   @override
   void initState() {
@@ -24,125 +26,178 @@ class _NotesScreenState extends State<NotesScreen> {
     _fetchNotes();
   }
 
-  // Function to fetch notes from the database
   Future<void> _fetchNotes() async {
-    try {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    if (authProvider.user == null) {
       setState(() {
-        _isLoading = true;
-        _error = null;
+        isLoading = false;
       });
+      return;
+    }
 
-      final fetchedNotes = await _noteService.getNotes();
+    setState(() {
+      isLoading = true;
+    });
 
+    try {
+      // Pass the user ID when fetching notes
+      final fetchedNotes = await _noteService.getNotes(authProvider.user!.$id);
       setState(() {
-        _notes = fetchedNotes;
-        _isLoading = false;
+        notes = fetchedNotes;
+        isLoading = false;
       });
     } catch (e) {
-      print('Error fetching notes: $e');
+      debugPrint('Failed to fetch notes: $e');
       setState(() {
-        _error = 'Failed to load notes. Please try again.';
-        _isLoading = false;
+        isLoading = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to fetch notes: $e')),
+        );
+      }
     }
   }
 
-  // Show the add note dialog
-  void _showAddNoteDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AddNoteModal(
-        onNoteAdded: _handleNoteAdded,
+  Future<void> _addNote(models.Document newNote) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    if (authProvider.user == null) return;
+
+    try {
+      setState(() {
+        notes.insert(0, newNote);
+      });
+    } catch (e) {
+      debugPrint('Failed to add note: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add note')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateNote(models.Document updatedNote) async {
+    try {
+      setState(() {
+        final index = notes.indexWhere((note) => note.$id == updatedNote.$id);
+        if (index != -1) {
+          notes[index] = updatedNote;
+        }
+      });
+    } catch (e) {
+      debugPrint('Failed to update note: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update note')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteNote(String id) async {
+    try {
+      final success = await _noteService.deleteNote(id);
+      if (success) {
+        setState(() {
+          notes.removeWhere((note) => note.$id == id);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Note deleted successfully')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to delete note: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete note')),
+        );
+      }
+    }
+  }
+
+  Widget _buildEmptyNotesView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.note_alt_outlined,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+          SizedBox(height: 20),
+          Text(
+            "You don't have any notes yet.",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: 10),
+          Text(
+            "Tap the + button to create your first note!",
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
 
-  // Add the new note to the state and avoid refetching
-  void _handleNoteAdded(Map<String, dynamic> noteData) {
-    // Create a temporary Document object
-    final newNote = Document(
-      $id: noteData['\$id'] ?? 'temp-id',
-      $collectionId: 'notes',
-      $databaseId: 'NotesDB',
-      $createdAt: DateTime.now().toString(),
-      $updatedAt: DateTime.now().toString(),
-      $permissions: [],
-      data: noteData,
-    );
-
-    setState(() {
-      _notes = [newNote, ..._notes];
-    });
-  }
-
-  // Handle note deletion by removing it from state
-  void _handleNoteDeleted(String noteId) {
-    setState(() {
-      _notes = _notes.where((note) => note.$id != noteId).toList();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with title and add button
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'My Notes',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: _showAddNoteDialog,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Show loading indicator
-            if (_isLoading && _notes.isEmpty)
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
-
-            // Show error message
-            if (_error != null && _notes.isEmpty)
-              Center(
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.red, fontSize: 16),
-                ),
-              ),
-
-            // Show the notes list
-            if (!_isLoading || _notes.isNotEmpty)
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _fetchNotes,
-                  child: ListView.builder(
-                    itemCount: _notes.length,
+      appBar: AppBar(
+        title: Text('My Notes'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              await authProvider.logout();
+              if (!mounted) return;
+              navigator.pushReplacementNamed('/auth');
+            },
+            tooltip: 'Logout',
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _fetchNotes,
+        child: isLoading
+            ? Center(child: CircularProgressIndicator())
+            : notes.isEmpty
+                ? _buildEmptyNotesView()
+                : ListView.builder(
+                    padding: EdgeInsets.all(8),
+                    itemCount: notes.length,
                     itemBuilder: (context, index) {
                       return NoteItem(
-                        note: _notes[index],
-                        onNoteDeleted: _handleNoteDeleted,
+                        note: notes[index],
+                        onDelete: _deleteNote,
+                        onUpdate: _updateNote,
                       );
                     },
                   ),
-                ),
-              ),
-          ],
-        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(Icons.add),
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            builder: (context) => AddNoteModal(onNoteAdded: _addNote),
+          );
+        },
+        tooltip: 'Add Note',
       ),
     );
   }

@@ -5,7 +5,7 @@ class NoteInputDialog extends StatelessWidget {
   final bool isEditing;
   final Function() onSave;
 
-  const NoteInputDialog({
+  const NoteInputDialog({  
     Key? key,
     required this.controller,
     required this.isEditing,

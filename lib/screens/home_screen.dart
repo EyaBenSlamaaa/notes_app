@@ -1,81 +1,76 @@
+// lib/screens/home_screen.dart (CORRECTED)
+// ============================================
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../widgets/logout_button.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
+
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Check authentication status
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (!authProvider.loading && !authProvider.isAuthenticated) {
+        Navigator.of(context).pushReplacementNamed('/auth');
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    if (authProvider.loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            height: 100,
-            color: Colors.blue,
-            padding: EdgeInsets.only(
-              bottom: 15,
-              left: 20,
-              right: 20,
-            ),
-            alignment: Alignment.bottomLeft,
-            child: Text(
-              'Notes App',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Welcome to Notes App',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Keep your ideas, lists, and reminders in one place',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Color(0xFF7F8C8D),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(height: 40),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/notes');
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      padding: EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 30,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      'Go to Notes',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      appBar: AppBar(
+        title: const Text('Notes App'),
+        actions: const [
+          LogoutButton(),
         ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Welcome, ${authProvider.user?.name ?? 'User'}!',
+                style: Theme.of(context).textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 15,
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pushNamed('/notes');
+                },
+                child: const Text('View My Notes'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

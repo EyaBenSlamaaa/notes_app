@@ -1,8 +1,12 @@
+// lib/widgets/add_note_modal.dart
 import 'package:flutter/material.dart';
+import 'package:appwrite/models.dart' as models;
 import '../services/note_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class AddNoteModal extends StatefulWidget {
-  final Function(Map<String, dynamic>) onNoteAdded;
+  final Function(models.Document) onNoteAdded;
 
   const AddNoteModal({
     Key? key,
@@ -27,7 +31,6 @@ class _AddNoteModalState extends State<AddNoteModal> {
     super.dispose();
   }
 
-  // Reset form state
   void _resetForm() {
     _titleController.clear();
     _contentController.clear();
@@ -36,15 +39,13 @@ class _AddNoteModalState extends State<AddNoteModal> {
     });
   }
 
-  // Save the new note
   Future<void> _handleSave() async {
-    // Basic form validation
     final title = _titleController.text.trim();
     final content = _contentController.text.trim();
 
     if (title.isEmpty || content.isEmpty) {
       setState(() {
-        _error = 'Please fill in both title and content';
+        _error = 'Veuillez remplir le titre et le contenu';
       });
       return;
     }
@@ -55,118 +56,170 @@ class _AddNoteModalState extends State<AddNoteModal> {
         _error = null;
       });
 
-      // Prepare note data
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.user?.$id ?? '';
+
+      if (userId.isEmpty) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      // IMPORTANT: Le nom du champ doit correspondre à votre collection Appwrite
+      // Utilisez 'userId' au lieu de 'user_id'
       final noteData = {
         'title': title,
         'content': content,
-        'userId': 'current-user-id', // We'll replace this with actual user ID later
+        'userId': userId, // Changé de 'user_id' à 'userId'
       };
 
-      // Call create note service
+      print('Tentative de création de note avec les données: $noteData');
+
+      final navigator = Navigator.of(context);
       final newNote = await _noteService.createNote(noteData);
 
-      // Reset form
-      _resetForm();
-
-      // Notify parent component and close modal
-      widget.onNoteAdded(newNote.data);
-      Navigator.pop(context);
+      if (newNote != null) {
+        print('Note créée avec succès: ${newNote.$id}');
+        _resetForm();
+        widget.onNoteAdded(newNote);
+        if (!mounted) return;
+        navigator.pop();
+      } else {
+        throw Exception('La création de la note a échoué');
+      }
 
     } catch (e) {
-      print('Error creating note: $e');
+      print('Erreur lors de la création de la note: $e');
       setState(() {
-        _error = 'Failed to save note. Please try again.';
+        _error = 'Échec de l\'enregistrement. Vérifiez vos permissions.';
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      elevation: 0,
-      backgroundColor: Colors.transparent,
-      child: contentBox(context),
-    );
-  }
-
-  Widget contentBox(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        shape: BoxShape.rectangle,
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Add New Note',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Nouvelle Note',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Show error message if there is one
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-          // Title input field
-          TextField(
-            controller: _titleController,
-            decoration: const InputDecoration(
-              hintText: 'Title',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 15),
-
-          // Content input field
-          TextField(
-            controller: _contentController,
-            decoration: const InputDecoration(
-              hintText: 'Content',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 5,
-          ),
-          const SizedBox(height: 20),
-
-          // Buttons row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Cancel button
-              TextButton(
-                onPressed: _isLoading ? null : () => Navigator.pop(context),
-                child: const Text('Cancel'),
+            if (_error != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: TextStyle(color: Colors.red.shade900),
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
-              // Save button
-              ElevatedButton(
-                onPressed: _isLoading ? null : _handleSave,
-                child: Text(_isLoading ? 'Saving...' : 'Save Note'),
+            TextField(
+              controller: _titleController,
+              decoration: InputDecoration(
+                labelText: 'Titre',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                prefixIcon: Icon(Icons.title),
               ),
-            ],
-          ),
-        ],
+              enabled: !_isLoading,
+            ),
+            const SizedBox(height: 16),
+
+            TextField(
+              controller: _contentController,
+              decoration: InputDecoration(
+                labelText: 'Contenu',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                prefixIcon: Icon(Icons.description),
+                alignLabelWithHint: true,
+              ),
+              maxLines: 5,
+              enabled: !_isLoading,
+            ),
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isLoading ? null : () => Navigator.pop(context),
+                    child: const Text('Annuler'),
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _handleSave,
+                    child: _isLoading
+                        ? SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Text('Enregistrer'),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
